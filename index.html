@@ -13,24 +13,9 @@
 <link rel="icon" href="icons/icon-192.png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
-<link rel="stylesheet" href="app.css?v=1">
+<link rel="stylesheet" href="app.css?v=2">
 </head>
 <body>
-<div id="login" class="login" hidden>
-  <div class="login-card">
-    <img src="assets/wavenet-logo-white.png" alt="WAVENET" class="login-logo">
-    <h1>성과면담 노트</h1>
-    <p class="login-sub">팀원 면담 준비부터 기록, 보고서까지</p>
-    <form id="loginForm" class="login-form">
-      <label>이메일<input type="email" id="loginEmail" autocomplete="username" required></label>
-      <label>비밀번호<input type="password" id="loginPw" autocomplete="current-password" required></label>
-      <button type="submit" class="btn pri" id="loginBtn">로그인</button>
-      <p class="err" id="loginErr"></p>
-    </form>
-    <p class="login-foot">다른 사내 앱과 같은 Supabase 계정으로 로그인해요.<br>기록은 로그인한 본인만 볼 수 있어요.</p>
-  </div>
-</div>
-
 <div id="app" class="app" hidden>
   <header class="top">
     <div class="top-row">
@@ -64,6 +49,6 @@
 
 <script src="vendor/supabase.js"></script>
 <script src="vendor/docx.js" defer></script>
-<script src="app.js?v=1"></script>
+<script src="app.js?v=2"></script>
 </body>
 </html>

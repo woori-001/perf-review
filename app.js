@@ -1,10 +1,10 @@
-// 성과면담 노트 · 데이터는 Supabase perf_review_sheets (본인 계정 행만 RLS로 접근)
+// 성과면담 노트 · 데이터는 Supabase perf_review_sheets (로그인 없이 사용, user_id = null 행만 접근)
 (function () {
 'use strict';
 const SB_URL = 'https://omdyyvqkxxigilxjysbz.supabase.co';
 const SB_KEY = 'sb_publishable_g41wwhIMN19UchPheU9Vvg_lAHjnZNf';
 const TABLE = 'perf_review_sheets';
-const sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: true, autoRefreshToken: true, storageKey: 'perf-review-auth' } });
+const sb = window.supabase.createClient(SB_URL, SB_KEY, { auth: { persistSession: false, autoRefreshToken: false } });
 
 const QS = [
   { id: 'q1', cat: '업무 현황', q: '현재 맡고 있는 고정업무와 실시간업무는 무엇인가요?', fields: [{ k: 'a', l: '고정업무' }, { k: 'b', l: '실시간업무' }] },
@@ -32,7 +32,7 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':
 const newId = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
 const ls = { get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } }, set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} } };
 
-let user = null;
+const user = { id: 'open' };
 let S = { common: null, members: [] };          // common: {id,data}, members: [{id,name,date,sort,data}]
 let dirty = new Set(), deleted = new Set();
 let UI = ls.get('perf-review-ui', { tab: 'common', idx: {}, prepOpen: true, incPrep: true, hideInstall: false });
@@ -161,11 +161,9 @@ function renderMenu() {
   if (!menuOpen) { $('menu').innerHTML = ''; return; }
   $('menu').innerHTML = `<div class="panel"><h2>메뉴</h2><div class="menu-list">
     <button id="mManage">면담자 관리 <small>이름 · 면담일 · 순서</small></button>
-    <button id="mSync">지금 저장하기 <small>${esc(user.email || '')}</small></button>
-    <button id="mOut">로그아웃 <small>이 기기 기록은 서버에 남아요</small></button></div></div>`;
+    <button id="mSync">지금 저장하기 <small>서버와 다시 맞추기</small></button></div></div>`;
   $('mManage').onclick = () => { manageOpen = true; menuOpen = false; render(); };
   $('mSync').onclick = () => { menuOpen = false; renderMenu(); S.members.forEach((m) => dirty.add(m.id)); if (S.common) dirty.add(S.common.id); flush(); };
-  $('mOut').onclick = async () => { await flush(); await sb.auth.signOut(); location.reload(); };
 }
 function renderManage() {
   if (!manageOpen) { $('manage').innerHTML = ''; return; }
@@ -318,7 +316,7 @@ async function buildDocx(t) {
   const lines = (s, o) => String(s).split('\n').map((x, i) => new X.TextRun(Object.assign({ text: x, break: i ? 1 : 0 }, o || {})));
   ch.push(new X.Paragraph({ children: [new X.TextRun({ text: 'WAVENET', bold: true, size: 18, color: '3D6EF2' })] }));
   ch.push(new X.Paragraph({ heading: X.HeadingLevel.TITLE, children: [new X.TextRun({ text: d.isC ? '성과면담 공통 준비 노트' : '성과면담 기록 · ' + d.name, bold: true, size: 36, color: '141A26' })] }));
-  ch.push(new X.Paragraph({ spacing: { after: 240 }, border: { bottom: { style: X.BorderStyle.SINGLE, size: 8, color: '3D6EF2', space: 6 } }, children: [new X.TextRun({ text: (d.date ? '면담일 ' + d.date + '    ' : '') + '작성일 ' + new Date().toLocaleDateString('ko-KR') + (user && user.email ? '    면담자 ' + user.email : ''), color: '6B7385', size: 19 })] }));
+  ch.push(new X.Paragraph({ spacing: { after: 240 }, border: { bottom: { style: X.BorderStyle.SINGLE, size: 8, color: '3D6EF2', space: 6 } }, children: [new X.TextRun({ text: (d.date ? '면담일 ' + d.date + '    ' : '') + '작성일 ' + new Date().toLocaleDateString('ko-KR'), color: '6B7385', size: 19 })] }));
   d.items.forEach((it) => {
     ch.push(new X.Paragraph({ heading: X.HeadingLevel.HEADING_2, spacing: { before: 280, after: 80 }, children: [new X.TextRun({ text: it.title, bold: true, size: 23, color: '141A26' })] }));
     it.alt.forEach((a) => ch.push(new X.Paragraph({ children: [new X.TextRun({ text: '또는 ' + a, color: '6B7385', size: 19 })] })));
@@ -360,19 +358,5 @@ let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (S.common && curIdx() === 0) renderCard(); });
 if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 
-function showLogin() { $('boot').hidden = true; $('app').hidden = true; $('login').hidden = false; }
-function showApp() { $('boot').hidden = true; $('login').hidden = true; $('app').hidden = false; }
-$('loginForm').addEventListener('submit', async (e) => {
-  e.preventDefault(); $('loginErr').textContent = ''; $('loginBtn').disabled = true; $('loginBtn').textContent = '로그인 중…';
-  const { data, error } = await sb.auth.signInWithPassword({ email: $('loginEmail').value.trim(), password: $('loginPw').value });
-  $('loginBtn').disabled = false; $('loginBtn').textContent = '로그인';
-  if (error) { $('loginErr').textContent = /invalid/i.test(error.message) ? '이메일 또는 비밀번호가 맞지 않아요.' : (navigator.onLine ? '로그인하지 못했어요. 잠시 후 다시 시도해 주세요.' : '인터넷 연결을 확인해 주세요.'); return; }
-  user = data.user; showApp(); loadAll();
-});
-(async () => {
-  const { data } = await sb.auth.getSession();
-  if (data && data.session) { user = data.session.user; showApp(); loadAll(); }
-  else showLogin();
-  sb.auth.onAuthStateChange((ev, session) => { if (ev === 'SIGNED_OUT') { user = null; showLogin(); } else if (session) user = session.user; });
-})();
+$('boot').hidden = true; $('app').hidden = false; loadAll();
 })();

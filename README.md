@@ -4,13 +4,14 @@
 
 - 주소: https://woori-001.github.io/perf-review/
 - 휴대폰에서 열고 **홈 화면에 추가**(아이폰 Safari) / **앱 설치**(안드로이드 Chrome)하면 앱처럼 씁니다.
-- 로그인: 다른 사내 앱과 같은 Supabase 계정(이메일·비밀번호)
+- 로그인 없이 바로 열립니다 (소유자 요청).
 
 ## 데이터
 - Supabase `woori-001's Project`
   - `public.perf_review_sheets` · 공통 준비(kind=common, 1인 1행) + 면담자별 기록(kind=member, data jsonb)
   - `public.perf_review_hist` · 수정/삭제 전 내용 자동 보관(10분 간격, 삭제 시 즉시) · 본인만 읽기
-- RLS: 로그인한 본인 행(`user_id = auth.uid()`)만 조회·추가·수정·삭제. anon 접근 없음.
+- RLS: 로그인 없이(anon) `user_id is null` 행만 조회·추가·수정·삭제. 주소와 공개 키를 아는 사람은 내용을 볼 수 있으니 민감한 내용은 주의.
+  (로그인 사용자용 `user_id = auth.uid()` 정책도 남아 있어, 나중에 로그인 방식으로 되돌릴 수 있음)
 - 이 앱은 다른 앱의 테이블을 읽거나 쓰지 않습니다.
 
 ## 파일
