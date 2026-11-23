@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>성과면담 노트</title>
+<meta name="theme-color" content="#3d6ef2">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="성과면담">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard.min.css">
+<link rel="stylesheet" href="app.css?v=1">
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <div class="login-card">
+    <img src="assets/wavenet-logo-white.png" alt="WAVENET" class="login-logo">
+    <h1>성과면담 노트</h1>
+    <p class="login-sub">팀원 면담 준비부터 기록, 보고서까지</p>
+    <form id="loginForm" class="login-form">
+      <label>이메일<input type="email" id="loginEmail" autocomplete="username" required></label>
+      <label>비밀번호<input type="password" id="loginPw" autocomplete="current-password" required></label>
+      <button type="submit" class="btn pri" id="loginBtn">로그인</button>
+      <p class="err" id="loginErr"></p>
+    </form>
+    <p class="login-foot">다른 사내 앱과 같은 Supabase 계정으로 로그인해요.<br>기록은 로그인한 본인만 볼 수 있어요.</p>
+  </div>
+</div>
+
+<div id="app" class="app" hidden>
+  <header class="top">
+    <div class="top-row">
+      <div class="brand"><img src="assets/wavenet-logo-white.png" alt="WAVENET" class="brand-logo"><span class="brand-name">성과면담 노트</span></div>
+      <div class="top-actions">
+        <span class="status" id="status"></span>
+        <button class="icon-btn" id="menuBtn" aria-label="메뉴"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 6h16M4 12h16M4 18h16"/></svg></button>
+      </div>
+    </div>
+    <div class="tabs" id="tabs"></div>
+  </header>
+
+  <main class="wrap">
+    <div id="menu"></div>
+    <div id="manage"></div>
+    <div class="prog">
+      <div class="bar"><i id="barFill"></i></div>
+      <button class="pg" id="pgBtn">1 / 16</button>
+    </div>
+    <div id="jump"></div>
+    <div id="main"></div>
+  </main>
+
+  <nav class="nav"><div class="nav-in">
+    <button class="btn" id="prevBtn">← 이전</button>
+    <button class="btn pri" id="nextBtn">다음 →</button>
+  </div></nav>
+</div>
+
+<div id="boot" class="boot">불러오는 중…</div>
+
+<script src="vendor/supabase.js"></script>
+<script src="vendor/docx.js" defer></script>
+<script src="app.js?v=1"></script>
+</body>
+</html>
