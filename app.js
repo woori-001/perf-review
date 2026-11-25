@@ -127,6 +127,23 @@ async function loadAll() {
   if (dirty.size || deleted.size) flush(); else setStatus('saved');
 }
 
+// 다른 기기(폰)에서 고친 내용을 PC로 돌아왔을 때 다시 불러옴
+let lastPull = 0;
+async function pullIfIdle() {
+  if (!S.common || dirty.size || deleted.size || !navigator.onLine || Date.now() - lastPull < 4000) return;
+  const a = document.activeElement; if (a && (a.tagName === 'TEXTAREA' || a.tagName === 'INPUT')) return;
+  lastPull = Date.now();
+  const { data, error } = await sb.from(TABLE).select('*').order('sort_order', { ascending: true }).order('created_at', { ascending: true });
+  if (error || !data || dirty.size) return;
+  const next = { common: null, members: [] };
+  data.forEach((r) => { if (r.kind === 'common') next.common = { id: r.id, data: r.data || {} }; else next.members.push({ id: r.id, name: r.name, date: r.review_date || '', sort: r.sort_order, data: r.data || {} }); });
+  if (!next.common) return;
+  if (JSON.stringify(next) === JSON.stringify(S)) return;
+  const y = window.scrollY; S = next; saveCache(); render(); window.scrollTo({ top: y }); setStatus('saved');
+}
+window.addEventListener('focus', pullIfIdle);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') pullIfIdle(); });
+
 // ───────── 데이터 도우미 ─────────
 const mem = (id) => S.members.find((m) => m.id === id);
 const MD = (m) => { m.data.prep = m.data.prep || {}; m.data.ans = m.data.ans || {}; m.data.score = m.data.score || {}; return m.data; };
@@ -161,8 +178,10 @@ function renderMenu() {
   if (!menuOpen) { $('menu').innerHTML = ''; return; }
   $('menu').innerHTML = `<div class="panel"><h2>메뉴</h2><div class="menu-list">
     <button id="mManage">면담자 관리 <small>이름 · 면담일 · 순서</small></button>
+    <button id="mView">${isPC() ? '카드 보기로 바꾸기' : '한 페이지 보기로 바꾸기'} <small>${isPC() ? '질문을 한 장씩' : '모든 질문을 한 화면에'}</small></button>
     <button id="mSync">지금 저장하기 <small>서버와 다시 맞추기</small></button></div></div>`;
   $('mManage').onclick = () => { manageOpen = true; menuOpen = false; render(); };
+  $('mView').onclick = () => { UI.view = isPC() ? 'card' : 'page'; if (UI.view === 'page' && wideMQ.matches) UI.view = 'auto'; if (UI.view === 'card' && !wideMQ.matches) UI.view = 'auto'; menuOpen = false; saveUI(); render(); };
   $('mSync').onclick = () => { menuOpen = false; renderMenu(); S.members.forEach((m) => dirty.add(m.id)); if (S.common) dirty.add(S.common.id); flush(); };
 }
 function renderManage() {
@@ -212,48 +231,97 @@ function installHint() {
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
   return `<div class="install"><div>${ios ? '<b>홈 화면에 앱으로 설치</b> · Safari 아래 공유 버튼 → <b>홈 화면에 추가</b>' : '<b>홈 화면에 앱으로 설치</b> · ' + (deferredPrompt ? '<button class="btn sm pri" id="doInstall" style="margin-left:4px">설치하기</button>' : 'Chrome 메뉴(⋮) → <b>앱 설치</b> 또는 <b>홈 화면에 추가</b>')}</div><button class="x" id="hideInstall" aria-label="닫기">×</button></div>`;
 }
-function renderCard(dir) {
-  const t = curTab(), i = curIdx();
-  if (i === SUM) { renderSummary(dir); return; }
+function cardHTML(i, t, pc) {
   const q = QS[i], isC = t === 'common', m = isC ? null : mem(t);
-  let h = (i === 0 ? installHint() : '') + `<div class="card ${dir ? 'slide-' + dir : ''}"><div class="meta"><span class="chip">${esc(q.cat)}</span><span class="who">${isC ? '모든 팀원 공통 준비' : esc(m.name) + ' 면담 기록'}</span></div>
+  let h = `<div class="meta"><span class="chip">${esc(q.cat)}</span><span class="who">${isC ? '모든 팀원 공통 준비' : esc(m.name) + ' 면담 기록'}</span></div>
   <p class="q">${q.close ? '' : `<span class="no">${i + 1}.</span>`}${esc(q.q)}</p>`;
   (q.alt || []).forEach((a) => { h += `<p class="alt"><b>또는</b>${esc(a)}</p>`; });
   if (q.hints && !q.scale) h += `<div class="hints">${q.hints.map((x) => `<span class="hint">예: ${esc(x)}</span>`).join('')}</div>`;
   if (isC) {
     h += `<div><label class="lb">내 준비 메모 · 팀원이 답을 못할 때 꺼낼 내 관점</label><textarea data-k="common" placeholder="${q.close ? '모두에게 공통으로 전할 기대사항이나 격려 멘트를 적어두세요' : '예상 답변, 먼저 꺼낼 예시, 꼬리질문 등을 적어두세요'}">${esc(S.common.data[q.id] || '')}</textarea></div>`;
-  } else {
-    const d = MD(m), cm = (S.common.data[q.id] || '').trim(), mp = d.prep[q.id] || '';
-    h += `<details class="prep" id="prepBox" ${UI.prepOpen ? 'open' : ''}><summary>내 준비 <span class="car">${cm || mp.trim() ? '작성됨' : '비어 있음'} · ${UI.prepOpen ? '접기' : '펼치기'}</span></summary><div class="pin">`;
-    if (cm) h += `<div class="common"><b>공통 준비</b>${esc(cm)}</div>`;
-    h += `<textarea data-k="prep" placeholder="${esc(m.name)} 님에게 맞춰 미리 정리할 내용">${esc(mp)}</textarea></div></details>`;
-    if (q.scale) {
-      const sc = d.score[q.id];
-      h += `<div><label class="lb">팀원이 말한 점수</label><div class="scale"><input type="range" min="0" max="10" step="1" value="${sc == null ? 5 : sc}" data-k="score"><span class="sv" id="sv">${sc == null ? '–' : sc}<small>/10</small></span></div><div class="ticks"><span>0</span><span>5</span><span>10</span></div>
-      <button class="btn sm ghost" id="clearScore" ${sc == null ? 'hidden' : ''}>점수 지우기</button></div>`;
-    }
-    fieldsOf(q).forEach((f) => { h += `<div><label class="lb">${esc(f.l)}</label><textarea data-k="ans" data-f="${f.k}" placeholder="${q.close ? '' : '팀원이 말한 내용을 받아 적으세요'}">${esc(d.ans[q.id + '.' + f.k] || '')}</textarea></div>`; });
+    return h;
   }
-  h += `</div>`;
-  $('main').innerHTML = h;
-  bindCard(q, t);
+  const d = MD(m), cm = (S.common.data[q.id] || '').trim(), mp = d.prep[q.id] || '';
+  let prep = '';
+  if (pc) {
+    prep = `<div class="prep-pc"><label class="lb lb-blue">내 준비</label>${cm ? `<div class="common"><b>공통 준비</b>${esc(cm)}</div>` : ''}<textarea data-k="prep" placeholder="${esc(m.name)} 님에게 맞춰 미리 정리할 내용">${esc(mp)}</textarea></div>`;
+  } else {
+    prep = `<details class="prep" ${UI.prepOpen ? 'open' : ''}><summary>내 준비 <span class="car">${cm || mp.trim() ? '작성됨' : '비어 있음'} · ${UI.prepOpen ? '접기' : '펼치기'}</span></summary><div class="pin">`
+      + (cm ? `<div class="common"><b>공통 준비</b>${esc(cm)}</div>` : '')
+      + `<textarea data-k="prep" placeholder="${esc(m.name)} 님에게 맞춰 미리 정리할 내용">${esc(mp)}</textarea></div></details>`;
+  }
+  let ans = '';
+  if (q.scale) {
+    const sc = d.score[q.id];
+    ans += `<div><label class="lb">팀원이 말한 점수</label><div class="scale"><input type="range" min="0" max="10" step="1" value="${sc == null ? 5 : sc}" data-k="score"><span class="sv">${sc == null ? '–' : sc}<small>/10</small></span></div><div class="ticks"><span>0</span><span>5</span><span>10</span></div>
+    <button class="btn sm ghost clear-score" ${sc == null ? 'hidden' : ''}>점수 지우기</button></div>`;
+  }
+  fieldsOf(q).forEach((f) => { ans += `<div><label class="lb">${esc(f.l)}</label><textarea data-k="ans" data-f="${f.k}" placeholder="${q.close ? '' : '팀원이 말한 내용을 받아 적으세요'}">${esc(d.ans[q.id + '.' + f.k] || '')}</textarea></div>`; });
+  return h + (pc ? `<div class="cols">${prep}<div class="ans-pc">${ans}</div></div>` : prep + ans);
 }
-function bindCard(q, t) {
-  const hi = $('hideInstall'); if (hi) hi.onclick = () => { UI.hideInstall = true; saveUI(); renderCard(); };
-  const di = $('doInstall'); if (di) di.onclick = async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); try { await deferredPrompt.userChoice; } catch (e) {} deferredPrompt = null; renderCard(); };
-  $('main').querySelectorAll('textarea').forEach((el) => {
-    autoGrow(el);
-    el.addEventListener('input', () => {
-      const k = el.dataset.k;
-      if (k === 'common') { S.common.data[q.id] = el.value; markDirty(S.common.id); }
-      else { const m = mem(t), d = MD(m); if (k === 'prep') d.prep[q.id] = el.value; else d.ans[q.id + '.' + el.dataset.f] = el.value; markDirty(m.id); }
-      autoGrow(el);
+function bindCard(el, i, t, onChange) {
+  const q = QS[i];
+  el.querySelectorAll('textarea').forEach((ta) => {
+    autoGrow(ta);
+    ta.addEventListener('input', () => {
+      const k = ta.dataset.k;
+      if (k === 'common') { S.common.data[q.id] = ta.value; markDirty(S.common.id); }
+      else { const m = mem(t), d = MD(m); if (k === 'prep') d.prep[q.id] = ta.value; else d.ans[q.id + '.' + ta.dataset.f] = ta.value; markDirty(m.id); }
+      autoGrow(ta); if (onChange) onChange();
     });
   });
-  const r = $('main').querySelector('input[type=range]');
-  if (r) r.addEventListener('input', () => { const m = mem(t); MD(m).score[q.id] = +r.value; $('sv').innerHTML = r.value + '<small>/10</small>'; $('clearScore').hidden = false; markDirty(m.id); });
-  const cs = $('clearScore'); if (cs) cs.onclick = () => { const m = mem(t); delete MD(m).score[q.id]; markDirty(m.id); renderCard(); };
-  const pb = $('prepBox'); if (pb) pb.addEventListener('toggle', () => { UI.prepOpen = pb.open; saveUI(); const c = pb.querySelector('.car'); if (c) c.textContent = c.textContent.replace(/접기|펼치기/, pb.open ? '접기' : '펼치기'); pb.querySelectorAll('textarea').forEach(autoGrow); });
+  const r = el.querySelector('input[type=range]'), cs = el.querySelector('.clear-score');
+  if (r) r.addEventListener('input', () => { const m = mem(t); MD(m).score[q.id] = +r.value; el.querySelector('.sv').innerHTML = r.value + '<small>/10</small>'; cs.hidden = false; markDirty(m.id); if (onChange) onChange(); });
+  if (cs) cs.onclick = () => { const m = mem(t); delete MD(m).score[q.id]; markDirty(m.id); el.querySelector('.sv').innerHTML = '–<small>/10</small>'; r.value = 5; cs.hidden = true; if (onChange) onChange(); };
+  const pb = el.querySelector('details.prep');
+  if (pb) pb.addEventListener('toggle', () => { UI.prepOpen = pb.open; saveUI(); const c = pb.querySelector('.car'); if (c) c.textContent = c.textContent.replace(/접기|펼치기/, pb.open ? '접기' : '펼치기'); pb.querySelectorAll('textarea').forEach(autoGrow); });
+}
+function renderCard(dir) {
+  if (isPC()) { renderPage(); return; }
+  const t = curTab(), i = curIdx();
+  if (i === SUM) { renderSummary(dir); return; }
+  $('main').innerHTML = (i === 0 ? installHint() : '') + `<div class="card ${dir ? 'slide-' + dir : ''}" id="card">${cardHTML(i, t, false)}</div>`;
+  const hi = $('hideInstall'); if (hi) hi.onclick = () => { UI.hideInstall = true; saveUI(); renderCard(); };
+  const di = $('doInstall'); if (di) di.onclick = async () => { if (!deferredPrompt) return; deferredPrompt.prompt(); try { await deferredPrompt.userChoice; } catch (e) {} deferredPrompt = null; renderCard(); };
+  bindCard($('card'), i, t);
+}
+
+// ───────── PC 한 페이지 보기 ─────────
+const wideMQ = window.matchMedia('(min-width: 1000px)');
+function isPC() { return UI.view === 'page' || (UI.view !== 'card' && wideMQ.matches); }
+function renderSide() {
+  const t = curTab(), i = curIdx(), side = $('side');
+  if (!isPC()) { side.hidden = true; return; }
+  side.hidden = false;
+  const name = t === 'common' ? '공통 준비' : esc(mem(t).name);
+  let h = `<div class="side-card"><div class="side-head"><b>${name}</b><span>${doneCount(t)} / ${SUM} 작성</span></div><div class="side-bar"><i style="width:${Math.round(doneCount(t) / SUM * 100)}%"></i></div><div class="side-list">`;
+  QS.forEach((q, k) => { h += `<button class="side-q ${isDone(t, q) ? 'done' : ''}" data-sq="${k}"><span class="n">${q.close ? '끝' : k + 1}</span><span class="t">${esc(q.close ? '마무리' : q.q)}</span></button>`; });
+  h += `</div><button class="btn ${i === SUM ? 'pri' : ''} side-sum" id="sideSum">${i === SUM ? '← 기록 화면으로' : '요약 · Word 내보내기'}</button></div>`;
+  side.innerHTML = h;
+  side.querySelectorAll('[data-sq]').forEach((b) => b.onclick = () => {
+    const k = +b.dataset.sq;
+    if (curIdx() === SUM) { UI.idx[curTab()] = 0; saveUI(); renderPage(); }
+    const el = document.getElementById('qc-' + k); if (el) { window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 150, behavior: 'smooth' }); const ta = el.querySelector('textarea'); if (ta) setTimeout(() => ta.focus({ preventScroll: true }), 350); }
+  });
+  $('sideSum').onclick = () => { UI.idx[curTab()] = curIdx() === SUM ? 0 : SUM; toast = null; saveUI(); renderPage(); window.scrollTo({ top: 0 }); };
+}
+function refreshSideMarks() {
+  const t = curTab(); if (!isPC()) return;
+  $('side').querySelectorAll('[data-sq]').forEach((b) => b.classList.toggle('done', isDone(t, QS[+b.dataset.sq])));
+  const hd = $('side').querySelector('.side-head span'); if (hd) hd.textContent = doneCount(t) + ' / ' + SUM + ' 작성';
+  const bar = $('side').querySelector('.side-bar i'); if (bar) bar.style.width = Math.round(doneCount(t) / SUM * 100) + '%';
+}
+function renderPage() {
+  document.body.classList.add('pc');
+  renderSide();
+  const t = curTab();
+  if (curIdx() === SUM) { renderSummary(); return; }
+  let h = '';
+  QS.forEach((q, k) => { h += `<div class="card card-pc" id="qc-${k}">${cardHTML(k, t, true)}</div>`; });
+  h += `<button class="btn pri page-sum" id="pageSum">요약 · Word 내보내기 →</button>`;
+  $('main').innerHTML = h;
+  QS.forEach((q, k) => bindCard(document.getElementById('qc-' + k), k, t, refreshSideMarks));
+  $('pageSum').onclick = () => { UI.idx[t] = SUM; toast = null; saveUI(); renderPage(); window.scrollTo({ top: 0 }); };
 }
 
 // ───────── 요약 · 보고서 ─────────
@@ -344,7 +412,8 @@ async function exportDocx(t) {
 // ───────── 이동 ─────────
 function go(i, dir) { UI.idx[curTab()] = Math.min(Math.max(i, 0), TOTAL - 1); toast = null; saveUI(); renderProg(); renderCard(dir); renderNav(); window.scrollTo({ top: 0 }); }
 function renderNav() { const i = curIdx(); $('prevBtn').style.visibility = i ? 'visible' : 'hidden'; $('nextBtn').textContent = i === SUM - 1 ? '요약 보기 →' : i === SUM ? '처음으로' : '다음 →'; }
-function render() { if (!S.common) return; renderTabs(); renderMenu(); renderManage(); renderProg(); renderCard(); renderNav(); }
+function render() { if (!S.common) return; document.body.classList.toggle('pc', isPC()); if (!isPC()) $('side').hidden = true; renderTabs(); renderMenu(); renderManage(); renderProg(); renderCard(); renderNav(); }
+wideMQ.addEventListener && wideMQ.addEventListener('change', () => render());
 $('prevBtn').onclick = () => go(curIdx() - 1, 'r');
 $('nextBtn').onclick = () => go(curIdx() === SUM ? 0 : curIdx() + 1, 'l');
 $('pgBtn').onclick = () => { jumpOpen = !jumpOpen; renderProg(); };
